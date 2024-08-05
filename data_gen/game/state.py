@@ -23,10 +23,12 @@ class BasicGame:
             y=self.base_y_position - (h // 10),
             w=h // 15,
             h=h // 10,
+            surface_y=self.base_platform.y
         )
         self.offset = 0
 
-        self.obstacle_locations = [10, 25, 30, 70]
+        # TODO: Fix the currently faced obstacle away from using 0th obstacle
+        self.obstacle_locations = [4, 12, 25, 35, 70]
         self.obstacles = deque()
 
     def render_background(self, col_a=7, col_b=13):
@@ -39,9 +41,10 @@ class BasicGame:
             for y in range(pyxel.height)
         ]
 
-    def create_obstacle(self, immune=False):
+    def create_obstacle(self, immune=True):
         w = self.h // 15
-        h = self.h // 15
+        # h = self.h // 15
+        h = 3
         obstacle = Obstacle(x=self.w - w, y=self.base_y_position - h, w=w, h=h, immune=immune)
         self.obstacles.append(obstacle)
 
@@ -60,26 +63,37 @@ class BasicGame:
             if not self.obstacles:
                 self.offset += 1
             else:
+                print(f"player x: {self.player.x}")
+                print(f"player x + player.w: {self.player.x + self.player.w}")
                 print(f"player y: {self.player.y}")
+                # print(f"player y + player.h: {self.player.y + self.player.h}")
                 print(f"obstacle y: {self.obstacles[0].y}")
-                print(self.player.y)
-                # If collide with object game over?
-                if (self.player.y + self.player.h) > self.obstacles[0].y:
-                    self.offset += 1
-                    self.move_obstacles()
-                # Player collision
-                elif (self.player.x + self.player.w) == self.obstacles[0].x:
-                    print("Cannot move")
-                    pass
-                else:
-                    self.offset += 1
-                    self.move_obstacles()
+                print(f"obstacle x: {self.obstacles[0].x}")
+                print("-----")
 
-                # if not self.obstacles[0].x == self.player.x + self.player.w:
+                is_player_above_obstacle = (
+                    self.player.x + self.player.w > self.obstacles[0].x
+                    and self.player.x < self.obstacles[0].x + self.obstacles[0].w
+                )
+                if is_player_above_obstacle:
+                    self.player.surface_y = self.obstacles[0].y
+                    print("Above obstacle")
+                elif self.player.surface_y != self.base_platform.y:
+                    self.player.surface_y = self.base_platform.y
+                    self.player.falling = True
+
+                is_player_colliding_right = (self.player.x + self.player.w) == self.obstacles[0].x
+                is_player_higher_than_obstacle = (self.player.y + self.player.h) <= self.obstacles[
+                    0
+                ].y
+                if not is_player_colliding_right or is_player_higher_than_obstacle:
+                    self.offset += 1
+                    self.move_obstacles()
 
         if pyxel.btn(KEY_UP):
             print("KEY_UP")
-            self.player.jump()
+            if not self.player.jumping and not self.player.falling:
+                self.player.jump()
 
         if self.offset in self.obstacle_locations:
             self.create_obstacle()
@@ -90,7 +104,7 @@ class BasicGame:
             pyxel.quit()
 
     def draw(self):
-        pyxel.cls(0)
+        # pyxel.cls(0)
         self.render_background()
         self.base_platform.render(col=15)
         self.player.render()

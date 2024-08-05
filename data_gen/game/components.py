@@ -8,31 +8,41 @@ class Player:
     y: float
     w: float
     h: float
+    surface_y: float  # TODO: Calculate whether airborne base on surface_y
     airborne: bool = field(default=False)
-    airborne_time: int = field(default=0)
-    airborne_limit: int = field(default=6)
+    jumping: bool = field(default=False)
+    falling: bool = field(default=False)
+    max_jump_height: int = 6
+    current_jump_height: int = 0
 
     def jump(self):
-        self.airborne = True
+        self.jumping = True
 
-    def handle_airborne(self, jump_height=3):
-        assert self.airborne_limit >= 2 * jump_height, "not enough time to perform full jump"
-        assert (
-            self.airborne_time <= self.airborne_limit
-        ), "spending longer airborne than airborne limit"
-        if self.airborne_time == self.airborne_limit:
-            self.airborne = False
-            self.airborne_time = 0
-            return
-        elif self.airborne_time < jump_height:
+    def handle_jumping(self):
+        self.jumping = self.current_jump_height < self.max_jump_height
+        is_above_surface = self.y + self.h < self.surface_y
+        if self.jumping:
             self.y -= 1
-        elif self.airborne_time >= (self.airborne_limit - jump_height):
+            self.current_jump_height += 1
+        else:
+            self.current_jump_height = 0
+            self.jumping = False
+            if is_above_surface:
+                self.falling = True
+                # TODO: Check if calling handle_falling() here has any benefits
+
+    def handle_falling(self):
+        if self.y + self.h == self.surface_y:
+            self.falling = False
+        else:
+            assert (self.y + self.h < self.surface_y), "player not actually falling"
             self.y += 1
-        self.airborne_time += 1
 
     def update(self):
-        if self.airborne:
-            self.handle_airborne()
+        if self.jumping:
+            self.handle_jumping()
+        if self.falling:
+            self.handle_falling()
 
     def render(self, col=1):
         pyxel.rect(x=self.x, y=self.y, w=self.w, h=self.h, col=col)
