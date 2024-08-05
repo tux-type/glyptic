@@ -43,8 +43,7 @@ class BasicGame:
 
     def create_obstacle(self, immune=True):
         w = self.h // 15
-        # h = self.h // 15
-        h = 3
+        h = self.h // 15
         obstacle = Obstacle(x=self.w - w, y=self.base_y_position - h, w=w, h=h, immune=immune)
         self.obstacles.append(obstacle)
 
@@ -91,6 +90,7 @@ class BasicGame:
                     self.move_obstacles()
 
         if pyxel.btn(KEY_UP):
+            # TODO: Handle both keys pressed together better (UP AND RIGHT)
             print("KEY_UP")
             if not self.player.jumping and not self.player.falling:
                 self.player.jump()

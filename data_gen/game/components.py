@@ -12,7 +12,7 @@ class Player:
     airborne: bool = field(default=False)
     jumping: bool = field(default=False)
     falling: bool = field(default=False)
-    max_jump_height: int = 6
+    max_jump_height: int = 3
     current_jump_height: int = 0
 
     def jump(self):
