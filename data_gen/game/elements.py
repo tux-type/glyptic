@@ -8,7 +8,7 @@ class Player:
     y: float
     w: float
     h: float
-    surface_y: float  # TODO: Calculate whether airborne base on surface_y
+    surface_y: float
     airborne: bool = field(default=False)
     jumping: bool = field(default=False)
     falling: bool = field(default=False)
