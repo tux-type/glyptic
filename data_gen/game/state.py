@@ -1,5 +1,5 @@
 import pyxel
-from components import Player, Platform, Obstacle
+from elements import Player, Platform, Obstacle
 from keys import KEY_RIGHT, KEY_UP
 from collections import deque
 
