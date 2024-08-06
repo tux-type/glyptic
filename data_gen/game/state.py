@@ -70,17 +70,6 @@ class BasicGame:
                 print(f"obstacle x: {self.obstacles[0].x}")
                 print("-----")
 
-                is_player_above_obstacle = (
-                    self.player.x + self.player.w > self.obstacles[0].x
-                    and self.player.x < self.obstacles[0].x + self.obstacles[0].w
-                )
-                if is_player_above_obstacle:
-                    self.player.surface_y = self.obstacles[0].y
-                    print("Above obstacle")
-                elif self.player.surface_y != self.base_platform.y:
-                    self.player.surface_y = self.base_platform.y
-                    self.player.falling = True
-
                 is_player_colliding_right = (self.player.x + self.player.w) == self.obstacles[0].x
                 is_player_higher_than_obstacle = (self.player.y + self.player.h) <= self.obstacles[
                     0
@@ -94,6 +83,20 @@ class BasicGame:
             print("KEY_UP")
             if not self.player.jumping and not self.player.falling:
                 self.player.jump()
+
+        # Check if need to fall
+        if self.obstacles:
+            is_player_above_obstacle = (
+                self.player.x + self.player.w > self.obstacles[0].x
+                and self.player.x < self.obstacles[0].x + self.obstacles[0].w
+            )
+            if is_player_above_obstacle:
+                self.player.surface_y = self.obstacles[0].y
+                print("Above obstacle")
+            elif self.player.surface_y != self.base_platform.y:
+                self.player.surface_y = self.base_platform.y
+                self.player.falling = True
+
 
         if self.offset in self.obstacle_locations:
             self.create_obstacle()
