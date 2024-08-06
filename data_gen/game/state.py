@@ -23,13 +23,14 @@ class BasicGame:
             y=self.base_y_position - (h // 10),
             w=h // 15,
             h=h // 10,
-            surface_y=self.base_platform.y
+            surface_y=self.base_platform.y,
         )
         self.offset = 0
 
-        # TODO: Fix the currently faced obstacle away from using 0th obstacle
-        self.obstacle_locations = [4, 12, 25, 35, 70]
+        self.obstacle_locations = [4, 6, 10, 25, 35, 70]
         self.obstacles = deque()
+        # Next obstacle is a misleading name, can be obstacle behind if no more ahead
+        self.next_obstacle = None
 
     def render_background(self, col_a=7, col_b=13):
         col_a, col_b = (col_a, col_b) if self.offset % 2 == 0 else (col_b, col_a)
@@ -51,17 +52,31 @@ class BasicGame:
         assert len(self.obstacles) > 0, "trying to move obstacles when none present"
         for obstacle in self.obstacles:
             obstacle.x -= 1
+        self.update_next_obstacle()
         if self.obstacles[0].x < 0:
             self.destroy_obstacle()
 
     def destroy_obstacle(self):
         self.obstacles.popleft()
 
+    def update_next_obstacle(self):
+        if not self.obstacles:
+            self.next_obstacle = None
+            return
+        else:
+            for obstacle in self.obstacles:
+                if (obstacle.x + obstacle.w) > self.player.x:
+                    self.next_obstacle = obstacle
+                    return
+
     def update(self):
+        self.update_next_obstacle()
+
         if pyxel.btnp(KEY_RIGHT, hold=0, repeat=1):
             if not self.obstacles:
                 self.offset += 1
             else:
+                assert self.next_obstacle is not None, "next_obstacle should be set"
                 print(f"player x: {self.player.x}")
                 print(f"player x + player.w: {self.player.x + self.player.w}")
                 print(f"player y: {self.player.y}")
@@ -70,7 +85,7 @@ class BasicGame:
                 print(f"obstacle x: {self.obstacles[0].x}")
                 print("-----")
 
-                is_player_colliding_right = (self.player.x + self.player.w) == self.obstacles[0].x
+                is_player_colliding_right = (self.player.x + self.player.w) == self.next_obstacle.x
                 is_player_higher_than_obstacle = (self.player.y + self.player.h) <= self.obstacles[
                     0
                 ].y
@@ -85,18 +100,18 @@ class BasicGame:
                 self.player.jump()
 
         # Check if need to fall
-        if self.obstacles:
+        if self.next_obstacle:
+            assert self.next_obstacle is not None, "next_obstacle should be set"
             is_player_above_obstacle = (
-                self.player.x + self.player.w > self.obstacles[0].x
-                and self.player.x < self.obstacles[0].x + self.obstacles[0].w
+                self.player.x + self.player.w > self.next_obstacle.x
+                and self.player.x < self.next_obstacle.x + self.next_obstacle.w
             )
             if is_player_above_obstacle:
-                self.player.surface_y = self.obstacles[0].y
+                self.player.surface_y = self.next_obstacle.y
                 print("Above obstacle")
             elif self.player.surface_y != self.base_platform.y:
                 self.player.surface_y = self.base_platform.y
                 self.player.falling = True
-
 
         if self.offset in self.obstacle_locations:
             self.create_obstacle()
