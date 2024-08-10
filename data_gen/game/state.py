@@ -150,15 +150,14 @@ class BasicGame:
             self.save_pressed_keys()
 
         if pyxel.btnp(pyxel.KEY_Q):
-            pyxel.screencast(scale=1)
             pyxel.quit()
 
     def save_screenshot(self):
         pyxel.screenshot(scale=1)
 
         # pyxel only saves screenshots in Desktop
-        path = Path("~/Desktop").expanduser()
-        screenshots = list(path.glob("*.png"))
+        screenshot_path = Path("~/Desktop").expanduser()
+        screenshots = list(screenshot_path.glob("pyxel*.png"))
         assert len(screenshots) == 1, "there should be only one pyxel png screenshot in save dir"
         new_name = (
             str(self.data_collection_dir)
