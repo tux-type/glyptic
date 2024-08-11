@@ -1,16 +1,20 @@
-import pyxel
-from elements import Player, Platform, Obstacle
-from keys import KEY_RIGHT, KEY_UP, KEY_QUIT
 from collections import deque
-
 from datetime import datetime
 import json
+import logging
 from pathlib import Path
+
+import pyxel
+
 from bot import AutoPlayer
+from elements import Obstacle, Platform, Player
+from keys import KEY_QUIT, KEY_RIGHT, KEY_UP
+
+logger = logging.getLogger(__name__)
 
 
 class BasicGame:
-    def __init__(self, w=45, h=30, fps=5, collect_data=True, auto_play=True):
+    def __init__(self, w=45, h=30, fps=20, collect_data=True, auto_play=True):
         self.collect_data = collect_data
 
         self.w = w
@@ -18,7 +22,7 @@ class BasicGame:
         pyxel.init(width=w, height=h, fps=fps, display_scale=1)
         pyxel.fullscreen(False)
 
-        self.update_counter = 0
+        self.update_counter = -1
         self.sc_flag = False
         self.base_y_position = pyxel.floor(pyxel.height * (2 / 3))
         self.base_platform = Platform(
@@ -52,9 +56,8 @@ class BasicGame:
             self.data_collection_dir = (
                 Path(__file__).parents[2] / "data" / "combined" / data_dir_name
             )
-            # TODO: Replace with logger
-            print(f"Assuming project directory: {self.data_collection_dir.parents[2]}")
-            print(f"Creating directory: {self.data_collection_dir}")
+            logger.info("Assuming project directory: {self.data_collection_dir.parents[2]}")
+            logger.info(f"Creating directory: {self.data_collection_dir}")
             self.data_collection_dir.mkdir(parents=False, exist_ok=False)
             self.keys_with_id = []
 
@@ -102,15 +105,20 @@ class BasicGame:
         screenshot_path = Path("~/Desktop").expanduser()
         screenshots = list(screenshot_path.glob("pyxel*.png"))
         assert len(screenshots) == 1, "there should be only one pyxel png screenshot in save dir"
-        new_name = (
-            str(self.data_collection_dir)
+        batch_subdir = (self.update_counter // 1000) + 1
+        new_screenshot_path = Path(
+            str(self.data_collection_dir) + "/" + "image_" + f"{batch_subdir:0=2}"
+        )
+        new_screenshot_path.mkdir(parents=False, exist_ok=True)
+        new_screenshot_name = (
+            str(new_screenshot_path)
             + "/"
             + screenshots[0].stem
             + "_X"
-            + str(self.update_counter)
+            + str(self.update_counter - 1)
             + screenshots[0].suffix
         )
-        screenshots[0].rename(new_name)
+        screenshots[0].rename(new_screenshot_name)
 
     def save_pressed_keys(self, write=False):
         update_id = "X" + str(self.update_counter)
@@ -125,6 +133,16 @@ class BasicGame:
             # Acts as an ID for key press and image data
             self.update_counter += 1
 
+        # TODO: Add __str__ methods to classes and use logger
+        # print(f"player x: {self.player.x}")
+        # print(f"player x + player.w: {self.player.x + self.player.w}")
+        # print(f"player y: {self.player.y}")
+        # print(f"player y + player.h: {self.player.y + self.player.h}")
+        # print(f"player surface_y: {self.player.surface_y}")
+        # print(f"obstacle y: {self.next_obstacle.y}")
+        # print(f"obstacle x: {self.next_obstacle.x}")
+        # print("-----")
+
         self.activated_keys = []
         if self.auto_play:
             self.activated_keys = self.auto_player.choose_moves(
@@ -138,7 +156,6 @@ class BasicGame:
         if pyxel.btn(KEY_QUIT):
             self.activated_keys.append(KEY_QUIT)
 
-
         self.update_next_obstacle()
 
         if KEY_RIGHT in self.activated_keys:
@@ -146,14 +163,6 @@ class BasicGame:
                 self.offset += 1
             else:
                 assert self.next_obstacle is not None, "next_obstacle should be set"
-                # print(f"player x: {self.player.x}")
-                # print(f"player x + player.w: {self.player.x + self.player.w}")
-                # print(f"player y: {self.player.y}")
-                # print(f"player y + player.h: {self.player.y + self.player.h}")
-                # print(f"player surface_y: {self.player.surface_y}")
-                # print(f"obstacle y: {self.next_obstacle.y}")
-                # print(f"obstacle x: {self.next_obstacle.x}")
-                # print("-----")
 
                 is_player_colliding_right = (self.player.x + self.player.w) == self.next_obstacle.x
                 is_player_above_obstacle = (self.player.y + self.player.h) <= self.next_obstacle.y

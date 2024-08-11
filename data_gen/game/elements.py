@@ -1,5 +1,6 @@
-import pyxel
 from dataclasses import dataclass, field
+
+import pyxel
 
 
 @dataclass
