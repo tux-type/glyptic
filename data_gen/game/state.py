@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import logging
 from pathlib import Path
+import random
 
 import pyxel
 
@@ -14,7 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 class BasicGame:
-    def __init__(self, w=45, h=30, fps=20, collect_data=True, auto_play=True):
+    def __init__(
+        self, w=45, h=30, fps=5, collect_data=True, auto_play=True, obstacle_locations=None
+    ):
         self.collect_data = collect_data
 
         self.w = w
@@ -40,7 +43,7 @@ class BasicGame:
         )
         self.offset = 0
 
-        self.obstacle_locations = [4, 6, 10, 25, 35, 70]
+        self.obstacle_locations = obstacle_locations
         self.obstacles = deque()
         # Next obstacle is a misleading name, can be obstacle behind if no more ahead
         self.next_obstacle = None
@@ -71,10 +74,16 @@ class BasicGame:
             for y in range(pyxel.height)
         ]
 
+    def roll_create_obstacle(self, p_create_obstacle=0.1):
+        # Obstacle is entering the window - wait before creating
+        if self.obstacles and ((self.obstacles[-1].x + self.obstacles[-1].w) > self.w):
+            return False
+        return random.random() < p_create_obstacle
+
     def create_obstacle(self, immune=True):
         w = self.h // 15
         h = self.h // 15
-        obstacle = Obstacle(x=self.w - w, y=self.base_y_position - h, w=w, h=h, immune=immune)
+        obstacle = Obstacle(x=self.w, y=self.base_y_position - h, w=w, h=h, immune=immune)
         self.obstacles.append(obstacle)
 
     def move_obstacles(self):
@@ -187,7 +196,9 @@ class BasicGame:
             # TODO: Handle both keys pressed together better (UP AND RIGHT)
             self.player.jump()
 
-        if self.offset in self.obstacle_locations:
+        if self.obstacle_locations and self.offset in self.obstacle_locations:
+            self.create_obstacle()
+        if self.roll_create_obstacle():
             self.create_obstacle()
 
         self.player.update()
