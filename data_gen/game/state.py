@@ -16,9 +16,17 @@ logger = logging.getLogger(__name__)
 
 class BasicGame:
     def __init__(
-        self, w=45, h=30, fps=5, collect_data=True, auto_play=True, obstacle_locations=None
+        self,
+        w=45,
+        h=30,
+        fps=30,
+        collect_data=True,
+        collect_data_n=10000,
+        auto_play=True,
+        obstacle_locations=None,
     ):
         self.collect_data = collect_data
+        self.collect_data_n = collect_data_n
 
         self.w = w
         self.h = h
@@ -124,7 +132,7 @@ class BasicGame:
             + "/"
             + screenshots[0].stem
             + "_X"
-            + str(self.update_counter - 1)
+            + str(self.update_counter)
             + screenshots[0].suffix
         )
         screenshots[0].rename(new_screenshot_name)
@@ -138,25 +146,13 @@ class BasicGame:
                 json.dump(self.keys_with_id, f_out)
 
     def update(self):
-        if self.collect_data:
-            # Acts as an ID for key press and image data
-            self.update_counter += 1
-
-        # TODO: Add __str__ methods to classes and use logger
-        # print(f"player x: {self.player.x}")
-        # print(f"player x + player.w: {self.player.x + self.player.w}")
-        # print(f"player y: {self.player.y}")
-        # print(f"player y + player.h: {self.player.y + self.player.h}")
-        # print(f"player surface_y: {self.player.surface_y}")
-        # print(f"obstacle y: {self.next_obstacle.y}")
-        # print(f"obstacle x: {self.next_obstacle.x}")
-        # print("-----")
-
         self.activated_keys = []
         if self.auto_play:
             self.activated_keys = self.auto_player.choose_moves(
                 player=self.player, next_obstacle=self.next_obstacle
             )
+            if self.update_counter == self.collect_data_n:
+                self.activated_keys.append(KEY_QUIT)
         else:
             if pyxel.btnp(KEY_RIGHT, hold=0, repeat=1):
                 self.activated_keys.append(KEY_RIGHT)
@@ -205,8 +201,11 @@ class BasicGame:
 
         quit_game = KEY_QUIT in self.activated_keys
         if self.collect_data:
-            self.save_screenshot()
-            self.save_pressed_keys(write=quit_game)
+            if self.update_counter >= 0:
+                self.save_screenshot()
+                self.save_pressed_keys(write=quit_game)
+            # Acts as an ID for key press and image data
+            self.update_counter += 1
 
         if quit_game:
             pyxel.quit()
