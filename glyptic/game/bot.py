@@ -1,6 +1,6 @@
 import random
 
-from keys import KEY_RIGHT, KEY_UP
+from .keys import KEY_RIGHT, KEY_UP
 
 
 class AutoPlayer:
