@@ -124,7 +124,7 @@ class BasicGame:
         assert len(screenshots) == 1, "there should be only one pyxel png screenshot in save dir"
         batch_subdir = (self.update_counter // 1000) + 1
         new_screenshot_path = Path(
-            str(self.data_collection_dir) + "/" + "image_" + f"{batch_subdir:0=2}"
+            str(self.data_collection_dir) + "/" + "images_" + f"{batch_subdir:0=2}"
         )
         new_screenshot_path.mkdir(parents=False, exist_ok=True)
         new_screenshot_name = (

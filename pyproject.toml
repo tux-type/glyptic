@@ -2,15 +2,21 @@
 requires = ["setuptools"]
 
 [project]
-name = "live-game-gen"
+name = "glyptic"
 version = "0.0.1"
 requires-python = "==3.10"
 readme = "README.md"
 license = {file = "LICENSE"}
 dependencies = [
   "pyxel>=2.1.6",
-  "clearml>=1.16.3"
+  "clearml>=1.16.3",
+  "jax[cuda12]>=0.4.31",
+  "jaxtyping>=0.2.33",
+  "pillow>=10.4.0"
 ]
+
+[project.optional-dependencies]
+tests = ["pytest>=8.3.2"]
 
 
 [tool.ruff]
