@@ -1,1 +1,1 @@
-# live-game-gen
+# Glyptic
