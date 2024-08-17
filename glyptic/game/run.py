@@ -1,4 +1,4 @@
-from state import BasicGame
+from .state import BasicGame
 
 if __name__ == "__main__":
     bg = BasicGame()

@@ -7,9 +7,9 @@ import random
 
 import pyxel
 
-from bot import AutoPlayer
-from elements import Obstacle, Platform, Player
-from keys import KEY_QUIT, KEY_RIGHT, KEY_UP
+from .bot import AutoPlayer
+from .elements import Obstacle, Platform, Player
+from .keys import KEY_QUIT, KEY_RIGHT, KEY_UP
 
 logger = logging.getLogger(__name__)
 
