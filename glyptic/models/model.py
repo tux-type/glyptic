@@ -97,7 +97,10 @@ def denoise(params, noisy_image, noise_rate, signal_rate):
 
 @jit
 def batch_denoise(params, batch_noisy_image, batch_noise_rate, batch_signal_rate):
-    return vmap(denoise)(params, batch_noisy_image, batch_noise_rate, batch_signal_rate)
+    # in_axes is making sure that params are not included in batching??
+    return vmap(denoise, in_axes=(None, 0, 0, 0))(
+        params, batch_noisy_image, batch_noise_rate, batch_signal_rate
+    )
 
 
 @jit
@@ -105,32 +108,31 @@ def mean_absolute_error(y, preds):
     return jnp.mean(jnp.abs(y - preds))
 
 
-@jit
-def batch_mean_absolute_error(batch_y, batch_preds):
-    return vmap(mean_absolute_error)(batch_y, batch_preds)
+# @jit
+# def batch_mean_absolute_error(batch_y, batch_preds):
+#     return vmap(mean_absolute_error)(batch_y, batch_preds)
 
 
 # MAE
 @jit
-def batch_loss(batch_noise_preds, batch_noise):
-    return batch_mean_absolute_error(batch_noise_preds, batch_noise)
+def loss(params, batch_x, batch_noise_rate, batch_signal_rate, batch_noise):
+    batch_noise_preds, batch_image_preds = batch_denoise(
+        params, batch_x, batch_noise_rate, batch_signal_rate
+    )
+    return mean_absolute_error(batch_noise_preds, batch_noise)
 
 
 # TODO: @jit
-# Figure out batching
 def update(params, batch_x, batch_y):
     # TODO: Figure out a good way to track keys - perhaps split
-    noises = random.normal(random.key(1), shape=x.shape)
+    noises = random.normal(random.key(1), shape=batch_x.shape)
     learning_rate = 0.01
     batch_size = batch_x.shape[0]
     time_steps = random.uniform(random.key(2), shape=batch_size, minval=0.0, maxval=1.0)
     batch_noise_rate, batch_signal_rate = cosine_diffusion_schedule(time_steps)
-    batch_pred_noises, batch_pred_images = batch_denoise(
-        params, batch_x, batch_noise_rate, batch_signal_rate
-    )
-    loss = batch_loss(batch_pred_noises, noises)
-    print(f"loss: {loss}")
-    grads = grad(batch_loss)(batch_pred_noises, noises)
+    loss_i = loss(params, batch_x, batch_noise_rate, batch_signal_rate, noises)
+    print(f"loss: {loss_i}")
+    grads = grad(loss)(params, batch_x, batch_noise_rate, batch_signal_rate, noises)
     return [
         (w - learning_rate * dw, b - learning_rate * db) for (w, b), (dw, db) in zip(params, grads)
     ]
@@ -145,7 +147,6 @@ data_loader = FrameKeyDataLoader(
     "data/combined/collection_20240813-195533/", batch_size=128, shuffle=False
 )
 
-# random.uniform
 
 num_epochs = 5
 for epoch in range(num_epochs):
