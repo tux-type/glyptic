@@ -51,16 +51,22 @@ def loss(params, batch_x, batch_noise_rate, batch_signal_rate, batch_noise):
 
 
 # TODO: @jit
-def update(params, batch_x, batch_y, key):
+# Performs all computation per batch
+def update(params, x_images, y_images, learning_rate, key):
+    batch_size = x_images.shape[0]
+
     key_noise, key_time_step = random.split(key)
-    noises = random.normal(key_noise, shape=batch_x.shape)
-    learning_rate = 0.01
-    batch_size = batch_x.shape[0]
-    time_steps = random.uniform(key_time_step, shape=batch_size, minval=0.0, maxval=1.0)
-    batch_noise_rate, batch_signal_rate = cosine_diffusion_schedule(time_steps)
-    loss_i = loss(params, batch_x, batch_noise_rate, batch_signal_rate, noises)
+
+    noises = random.normal(key_noise, shape=x_images.shape)
+    # TODO: Change shape after removing flattening
+    time_steps = random.uniform(key_time_step, shape=(batch_size, 1), minval=0.0, maxval=1.0)
+    noise_rates, signal_rates = cosine_diffusion_schedule(time_steps)
+
+    noisy_x_images = signal_rates * x_images + noise_rates * noises
+
+    loss_i = loss(params, noisy_x_images, noise_rates, signal_rates, noises)
     print(f"loss: {loss_i}")
-    grads = grad(loss)(params, batch_x, batch_noise_rate, batch_signal_rate, noises)
+    grads = grad(loss)(params, noisy_x_images, noise_rates, signal_rates, noises)
     return [
         (w - learning_rate * dw, b - learning_rate * db) for (w, b), (dw, db) in zip(params, grads)
     ]
@@ -70,6 +76,7 @@ def train_model():
     # Input layer size flattened - determine if suitable
     layer_sizes = [4050, 512, 512, 4050]
     batch_size = 128
+    learning_rate = 0.01
     params_key, update_key = random.split(random.key(0))
     params = init_network_params(layer_sizes, params_key)
 
@@ -84,7 +91,13 @@ def train_model():
             x = batched_preprocess(x)
             update_key, batch_update_key = random.split(update_key)
             # TODO: Remove reshape - Not needed when using conv later
-            params = update(params, x.reshape(x.shape[0], -1), y, batch_update_key)
+            params = update(
+                params=params,
+                x_images=x.reshape(x.shape[0], -1),
+                y_images=y,
+                learning_rate=learning_rate,
+                key=batch_update_key,
+            )
         epoch_time = time.time() - start_time
 
         # train_loss = loss(params, train_images, train_labels)

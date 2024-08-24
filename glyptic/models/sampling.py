@@ -43,7 +43,7 @@ def denoise(params, noisy_image, noise_rate, signal_rate):
     # - find out why square the noise rates - to have smaller steps for denoising than noising?
     # - figure out the more optimal method (perhaps array concat more appropriate)
     pred_noise = forward(params, noisy_image)
-    # REAL IMPLEMENTATION:
+    # TODO: REAL IMPLEMENTATION:
     # pred_noise = predict(params, [noisy_image, noise_rate**2])
     # Remove noise scaled by number of noise steps and scale back up by signal rates to overall same
     # intensity
