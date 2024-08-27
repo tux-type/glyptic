@@ -33,16 +33,16 @@ class ResidualBlock(nn.Module):
         # TODO: Add dropout
         residual = x
         out = nn.GroupNorm(num_groups=self.num_groups)(x)
-        out = nn.swish()(out)
-        out = nn.Conv(self.filters, kernel_size=(3, 3), padding=(1, 1))
+        out = nn.swish(out)
+        out = nn.Conv(self.filters, kernel_size=(3, 3), padding=(1, 1))(out)
 
-        times = nn.swish()(times)
+        times = nn.swish(times)
         # Adds two dimensions for H, W.
         # TODO: Might not need time embeddings added to each res block??
         out += nn.Dense(self.filters)(times)[:, None, None, :]
 
-        out = nn.GroupNorm(num_groups=self.num_grousp)(out)
-        out = nn.swish()(out)
+        out = nn.GroupNorm(num_groups=self.num_groups)(out)
+        out = nn.swish(out)
         out = nn.Conv(self.filters, kernel_size=(3, 3), padding=(1, 1))(out)
 
         if residual.shape != out.shape:
