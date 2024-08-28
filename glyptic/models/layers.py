@@ -50,11 +50,62 @@ class ResidualBlock(nn.Module):
         return out + residual
 
 
+class AttentionBlock(nn.Module):
+    pass
+
+
 class DownBlock(nn.Module):
-    # TODO: Call something else
-    units: int
+    features: int
+    with_attention: bool = False
 
     @nn.compact
     def __call__(self, x, times):
-        out = ResidualBlock(filters=32, num_groups=32)(x, times)
-        return x
+        out = ResidualBlock(filters=self.features)(x, times)
+        if self.with_attention:
+            out = AttentionBlock()(out)
+
+        return out
+
+
+# TODO: Redundant with DownBlock - perhaps remove
+class UpBlock(nn.Module):
+    features: int
+    with_attention: bool = False
+
+    @nn.compact
+    def __call__(self, x, times):
+        out = ResidualBlock(filters=self.features)(x, times)
+        if self.with_attention:
+            out = AttentionBlock()(out)
+        return out
+
+
+class MiddleBlock(nn.Module):
+    features: int
+
+    @nn.compact
+    def __call__(self, x, times):
+        out = ResidualBlock(filters=self.features)(x, times)
+        out = AttentionBlock()(out)
+        out = ResidualBlock(filters=self.features)(x, times)
+        return out
+
+
+# Scale up feature map 2x
+class UpSample(nn.Module):
+    features: int
+
+    @nn.compact
+    def __call__(self, x, _):
+        # TODO: Check more on kernel size, stride, and padding choice
+        out = nn.ConvTranspose(self.features, kernel_size=(4, 4), strides=(2, 2), padding=(1, 1))(x)
+        return out
+
+
+class DownSample(nn.Module):
+    features: int
+
+    @nn.compact
+    def __call__(self, x, _):
+        out = nn.Conv(self.features, kernel_size=(3, 3), strides=(2, 2), padding=(1, 1))(x)
+        return out
