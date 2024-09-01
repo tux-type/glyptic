@@ -5,6 +5,7 @@ from glyptic.models.layers import (
     MiddleBlock,
     SinusoidalEmbedding,
     ResidualBlock,
+    UNet,
     UpBlock,
     UpSample,
 )
@@ -15,10 +16,10 @@ from jax import random, Array
 def test_sinusoidal_embedding():
     batch_size = 128
     channels = 64
-    n_steps = 1000
+    num_steps = 1000
     key = random.key(0)
 
-    times = random.randint(key, shape=(batch_size,), minval=0, maxval=n_steps)
+    times = random.randint(key, shape=(batch_size,), minval=0, maxval=num_steps)
 
     se = SinusoidalEmbedding(num_channels=channels * 4)
     params = se.init(key, times)
@@ -109,11 +110,11 @@ def test_down_sample():
     key = random.key(0)
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
 
-    ds = DownSample(channels)
+    ds = DownSample()
     params = ds.init(key, inputs)
     outputs = ds.apply(params, inputs)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 16, 96, 64)
+    assert outputs.shape == (128, 16, 24, 64)
 
 
 def test_up_sample():
@@ -123,8 +124,30 @@ def test_up_sample():
     key = random.key(0)
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
 
-    us = UpSample(channels)
+    us = UpSample()
     params = us.init(key, inputs)
     outputs = us.apply(params, inputs)
     assert isinstance(outputs, Array)
     assert outputs.shape == (128, 64, 96, 64)
+
+
+def test_unet():
+    batch_size = 128
+    height, width = 32, 48
+    channels = 3
+    initial_channels = 64
+    num_steps = 1000
+    key = random.key(0)
+    inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
+    times = random.randint(key, shape=(batch_size,), minval=0, maxval=num_steps)
+
+    unet = UNet(
+        num_channels=initial_channels,
+        channel_multipliers=(1, 2, 2, 4),
+        use_attention=(False, False, True, True),
+        num_blocks=2,
+    )
+    params = unet.init(key, inputs, times)
+    outputs = unet.apply(params, inputs, times)
+    assert isinstance(outputs, Array)
+    assert outputs.shape == (128, 32, 48, 3)

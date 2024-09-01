@@ -2,6 +2,7 @@ import jax.numpy as jnp
 import flax.linen as nn
 import math
 from jax import Array
+from typing import Sequence
 
 
 class SinusoidalEmbedding(nn.Module):
@@ -119,20 +120,97 @@ class MiddleBlock(nn.Module):
 
 
 class DownSample(nn.Module):
-    features: int
-
     @nn.compact
-    def __call__(self, x: Array) -> Array:
-        out = nn.Conv(self.features, kernel_size=(3, 3), strides=(2, 2), padding=(1, 1))(x)
+    def __call__(self, x: Array, *_) -> Array:
+        # Keeping number of channels the same
+        features = x.shape[-1]
+        out = nn.Conv(features, kernel_size=(3, 3), strides=(2, 2), padding=(1, 1))(x)
         return out
 
 
 # Scale up feature map 2x
 class UpSample(nn.Module):
-    features: int
-
     @nn.compact
-    def __call__(self, x: Array) -> Array:
+    def __call__(self, x: Array, *_) -> Array:
+        # Keeping number of channels the same
+        features = x.shape[-1]
         # TODO: Might need to change as not equivalent to torch ConvTranspose2D
-        out = nn.ConvTranspose(self.features, kernel_size=(4, 4), strides=(2, 2), padding="SAME")(x)
+        # https://github.com/google/flax/issues/1872
+        out = nn.ConvTranspose(features, kernel_size=(4, 4), strides=(2, 2), padding="SAME")(x)
+        return out
+
+
+class UNet(nn.Module):
+    num_channels: int = 64
+    channel_multipliers: Sequence[int] = (1, 2, 2, 4)
+    use_attention: Sequence[bool] = (False, False, True, True)
+    num_blocks: int = 2
+
+    def setup(self):
+        num_resolutions = len(self.channel_multipliers)
+        self.image_projection = nn.Conv(self.num_channels, kernel_size=(3, 3), padding=(1, 1))
+
+        self.time_embedding = SinusoidalEmbedding(self.num_channels * 4)
+
+        down_blocks = []
+
+        out_channels = self.num_channels
+
+        for i in range(num_resolutions):
+            out_channels = out_channels * self.channel_multipliers[i]
+
+            for _ in range(self.num_blocks):
+                down_blocks.append(DownBlock(out_channels, self.use_attention[i]))
+
+            if i < num_resolutions - 1:
+                down_blocks.append(DownSample())
+
+        self.down_blocks = down_blocks
+
+        self.middle_block = MiddleBlock(out_channels)
+
+        up_blocks = []
+
+        for i in reversed(range(num_resolutions)):
+            for _ in range(self.num_blocks):
+                up_blocks.append(UpBlock(out_channels, self.use_attention[i]))
+
+            out_channels = out_channels // self.channel_multipliers[i]
+            up_blocks.append(UpBlock(out_channels, self.use_attention[i]))
+
+            if i > 0:
+                up_blocks.append(UpSample())
+
+        self.up_blocks = up_blocks
+
+        self.group_norm = nn.GroupNorm(8)
+        # image_channels = 3 (RGB)
+        self.feature_aggregation = nn.Conv(3, kernel_size=(3, 3), padding=(1, 1))
+
+    def __call__(self, x: Array, times: Array) -> Array:
+        x = self.image_projection(x)
+        times = self.time_embedding(times)
+
+        # TODO: Determine why it's called h
+        hidden_states = [x]
+
+        out = x
+        for block in self.down_blocks:
+            out = block(out, times)
+            hidden_states.append(out)
+
+        out = self.middle_block(out, times)
+
+        for block in self.up_blocks:
+            if isinstance(block, UpSample):
+                out = block(out, times)
+            else:
+                skip = hidden_states.pop()
+                out = jnp.concat((out, skip), axis=3)
+                out = block(out, times)
+
+        out = self.group_norm(out)
+        out = nn.swish(out)
+        out = self.feature_aggregation(out)
+
         return out
