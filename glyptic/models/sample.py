@@ -1,7 +1,8 @@
 from typing import Mapping
+
+from flax.core import FrozenDict, freeze
 from jax import Array, random
 import jax.numpy as jnp
-from flax.core import FrozenDict, freeze
 
 
 def create_noise_schedule(num_steps: int) -> FrozenDict:
