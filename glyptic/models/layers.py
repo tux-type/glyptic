@@ -60,6 +60,7 @@ class AttentionBlock(nn.Module):
 
     @nn.compact
     def __call__(self, x: Array) -> Array:
+        # X is BHWC
         input_channels: int = x.shape[-1]
         d_k = self.d_k if self.d_k else input_channels
 
