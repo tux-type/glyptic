@@ -1,111 +1,34 @@
-from glyptic.data import FrameKeyDataLoader
+from jax import value_and_grad, vmap
+from jax import random
 import jax.numpy as jnp
-from jax import Array, jit, vmap, random, grad
-from .model import init_network_params
-from .sampling import batch_denoise, cosine_diffusion_schedule
 
-import time
+from .sample import create_noise_schedule, q_sample
 
 
-@jit
-def preprocess(image: Array):
-    image = image.astype(jnp.float32) / 255.0
-    return image
-
-
-@jit
-def batched_preprocess(batched_images: Array):
-    return vmap(preprocess)(batched_images)
-
-
-def load_data() -> Array:
-    data_loader = FrameKeyDataLoader(
-        "data/combined/collection_20240813-195533/", batch_size=128, shuffle=False
+def update_step(apply_fn, x0_batch, y_batch, opt_state, params, num_steps):
+    # TODO: Decide how to handle keys
+    key = random.key(0)
+    noise_schedule = create_noise_schedule(num_steps=num_steps)
+    batch_size = x0_batch.shape[0]
+    times_batch = random.randint(key, shape=(batch_size,), minval=0, maxval=num_steps)
+    noise_batch = random.normal(key, shape=x0_batch.shape)
+    xt_batch = q_sample(
+        key, noise_schedule["alpha_bar"], x0=x0_batch, times=times_batch, epsilon=noise_batch
     )
 
-    input_images = []
-    label_images = []
+    def batch_loss(params):
+        def loss_fn(x, times, noise):
+            epsilon_theta = apply_fn(params, x, times)
+            return (noise - epsilon_theta) ** 2  # TODO: Replace with real loss function
 
-    for input_image, label_image in data_loader:
-        input_images.append(input_image)
-        label_images.append(label_image)
-        break
+        loss = vmap(
+            loss_fn,
+            # axis_name="batch",  # Name batch dim
+        )(xt_batch, times_batch, noise_batch)
+        return jnp.mean(loss)
 
-    input_images = jnp.array(input_images[0])
-    input_images = batched_preprocess(input_images)
-    return input_images
+    (loss, updated_state), grads = value_and_grad(batch_loss, has_aux=True)(params)
 
-
-@jit
-def mean_absolute_error(y, preds):
-    return jnp.mean(jnp.abs(y - preds))
-
-
-# MAE
-@jit
-def loss(params, batch_x, batch_noise_rate, batch_signal_rate, batch_noise):
-    batch_noise_preds, batch_image_preds = batch_denoise(
-        params, batch_x, batch_noise_rate, batch_signal_rate
-    )
-    return mean_absolute_error(batch_noise_preds, batch_noise)
-
-
-# TODO: @jit
-# Performs all computation per batch
-def update(params, x_images, y_images, learning_rate, key):
-    batch_size = x_images.shape[0]
-
-    key_noise, key_time_step = random.split(key)
-
-    noises = random.normal(key_noise, shape=x_images.shape)
-    # TODO: Change shape after removing flattening
-    time_steps = random.uniform(key_time_step, shape=(batch_size, 1), minval=0.0, maxval=1.0)
-    noise_rates, signal_rates = cosine_diffusion_schedule(time_steps)
-
-    noisy_x_images = signal_rates * x_images + noise_rates * noises
-
-    loss_i = loss(params, noisy_x_images, noise_rates, signal_rates, noises)
-    print(f"loss: {loss_i}")
-    grads = grad(loss)(params, noisy_x_images, noise_rates, signal_rates, noises)
-    return [
-        (w - learning_rate * dw, b - learning_rate * db) for (w, b), (dw, db) in zip(params, grads)
-    ]
-
-
-def train_model():
-    # Input layer size flattened - determine if suitable
-    layer_sizes = [4050, 512, 512, 4050]
-    batch_size = 128
-    learning_rate = 0.01
-    params_key, update_key = random.split(random.key(0))
-    params = init_network_params(layer_sizes, params_key)
-
-    data_loader = FrameKeyDataLoader(
-        "data/combined/collection_20240813-195533/", batch_size=batch_size, shuffle=False
-    )
-
-    num_epochs = 5
-    for epoch in range(num_epochs):
-        start_time = time.time()
-        for x, y in data_loader:
-            x = batched_preprocess(x)
-            update_key, batch_update_key = random.split(update_key)
-            # TODO: Remove reshape - Not needed when using conv later
-            params = update(
-                params=params,
-                x_images=x.reshape(x.shape[0], -1),
-                y_images=y,
-                learning_rate=learning_rate,
-                key=batch_update_key,
-            )
-        epoch_time = time.time() - start_time
-
-        # train_loss = loss(params, train_images, train_labels)
-        # test_loss = loss(params, test_images, test_labels)
-        print(f"Epoch {epoch} in {epoch_time:0.2f} sec")
-        # print(f"Training set accuracy {train_loss}")
-        # print(f"Test set accuracy {test_loss}")
-
-
-if __name__ == "__main__":
-    train_model()
+    # updates, opt_state = tx.update(grads, opt_state)  # Defined below.
+    # params = optax.apply_updates(params, updates)
+    return opt_state, params, updated_state, loss
