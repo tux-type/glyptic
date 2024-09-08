@@ -1,16 +1,17 @@
+from jax import Array, random
+import jax.numpy as jnp
+
 from glyptic.models.layers import (
     AttentionBlock,
     DownBlock,
     DownSample,
     MiddleBlock,
-    SinusoidalEmbedding,
     ResidualBlock,
+    SinusoidalEmbedding,
     UNet,
     UpBlock,
     UpSample,
 )
-import jax.numpy as jnp
-from jax import random, Array
 
 
 def test_sinusoidal_embedding():
@@ -30,22 +31,23 @@ def test_sinusoidal_embedding():
 
 def test_residual_block():
     batch_size = 128
-    height, width = 30, 45
+    height, width = 32, 48
     channels = 64
+    out_channels = 32
     key = random.key(0)
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    rb = ResidualBlock(filters=32, num_groups=32)
+    rb = ResidualBlock(filters=out_channels, num_groups=32)
     params = rb.init(key, inputs, times)
     outputs = rb.apply(params, inputs, times)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 30, 45, 32)
+    assert outputs.shape == (batch_size, height, width, out_channels)
 
 
 def test_attention_block():
     batch_size = 128
-    height, width = 30, 45
+    height, width = 32, 48
     channels = 64
     key = random.key(0)
 
@@ -55,52 +57,55 @@ def test_attention_block():
     params = attn.init(key, inputs)
     outputs = attn.apply(params, inputs)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 30, 45, 64)
+    assert outputs.shape == (batch_size, height, width, channels)
 
 
 def test_down_block():
     batch_size = 128
-    height, width = 30, 45
+    height, width = 32, 48
     channels = 64
+    out_channels = 128
     key = random.key(0)
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    db = DownBlock(features=128, with_attention=True)
+    db = DownBlock(features=out_channels, with_attention=True)
     params = db.init(key, inputs, times)
     outputs = db.apply(params, inputs, times)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 30, 45, 128)
+    assert outputs.shape == (batch_size, height, width, out_channels)
 
 
 def test_up_block():
     batch_size = 128
-    height, width = 30, 45
+    height, width = 32, 48
     channels = 64
+    out_channels = 32
     key = random.key(0)
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    ub = UpBlock(features=32, with_attention=True)
+    ub = UpBlock(features=out_channels, with_attention=True)
     params = ub.init(key, inputs, times)
     outputs = ub.apply(params, inputs, times)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 30, 45, 32)
+    assert outputs.shape == (batch_size, height, width, out_channels)
 
 
 def test_middle_block():
     batch_size = 128
-    height, width = 30, 45
+    height, width = 32, 48
     channels = 64
+    out_channels = 32
     key = random.key(0)
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    mb = MiddleBlock(features=32)
+    mb = MiddleBlock(features=out_channels)
     params = mb.init(key, inputs, times)
     outputs = mb.apply(params, inputs, times)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 30, 45, 32)
+    assert outputs.shape == (batch_size, height, width, out_channels)
 
 
 def test_down_sample():
@@ -114,7 +119,7 @@ def test_down_sample():
     params = ds.init(key, inputs)
     outputs = ds.apply(params, inputs)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 16, 24, 64)
+    assert outputs.shape == (batch_size, height / 2, width / 2, channels)
 
 
 def test_up_sample():
@@ -128,7 +133,7 @@ def test_up_sample():
     params = us.init(key, inputs)
     outputs = us.apply(params, inputs)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 64, 96, 64)
+    assert outputs.shape == (batch_size, 2 * height, 2 * width, channels)
 
 
 def test_unet():
@@ -150,4 +155,4 @@ def test_unet():
     params = unet.init(key, inputs, times)
     outputs = unet.apply(params, inputs, times)
     assert isinstance(outputs, Array)
-    assert outputs.shape == (128, 32, 48, 3)
+    assert outputs.shape == (batch_size, height, width, channels)
