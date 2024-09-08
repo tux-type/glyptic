@@ -2,6 +2,7 @@ from typing import Mapping
 
 from flax.core import FrozenDict, freeze
 from jax import Array, random
+from jax import jit
 import jax.numpy as jnp
 
 
@@ -15,7 +16,7 @@ def create_noise_schedule(num_steps: int) -> FrozenDict:
     )
 
 
-# TODO: Decide whether to jit or not to jit (and/or vmap)
+@jit
 def q_xt_x0(alpha_bar: Array, x0: Array, times: Array) -> tuple[Array, Array]:
     # Signal rates at different times steps
     alpha_bar = alpha_bar[times].reshape(-1, 1, 1, 1)
@@ -24,14 +25,14 @@ def q_xt_x0(alpha_bar: Array, x0: Array, times: Array) -> tuple[Array, Array]:
     return mean, variance
 
 
-def q_sample(key: Array, alpha_bar, x0: Array, times: Array, epsilon: Array):
+@jit
+def q_sample(alpha_bar, x0: Array, times: Array, epsilon: Array):
     mean, variance = q_xt_x0(alpha_bar=alpha_bar, x0=x0, times=times)
-
     return mean + (variance**0.5) * epsilon
 
 
 def p_sample(
-    key,
+    rng: Array,
     noise_schedule: Mapping[str, Array],
     epsilon_theta,
     xt: Array,
@@ -42,5 +43,5 @@ def p_sample(
     epsilon_coef = (1 - alpha) / (1 - alpha_bar) ** 0.5
     mean = 1 / (alpha**0.5) * (xt - epsilon_coef - epsilon_theta)
     variance = noise_schedule["sigma2"][times].reshape(-1, 1, 1, 1)
-    epsilon = random.normal(key, shape=xt.shape)
+    epsilon = random.normal(rng, shape=xt.shape)
     return mean + (variance**0.5) * epsilon
