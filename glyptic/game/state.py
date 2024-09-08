@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class BasicGame:
     def __init__(
         self,
-        w=45,
-        h=30,
+        w=48,
+        h=32,
         fps=30,
         collect_data=True,
         collect_data_n=10000,
