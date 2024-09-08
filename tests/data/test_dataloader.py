@@ -8,7 +8,7 @@ from glyptic.data import FrameKeyDataLoader
 
 @pytest.fixture(scope="module")
 def data_dir():
-    return str(Path(__file__).parent) + "/dataset/collection_20240813-195533"
+    return str(Path(__file__).parent.parent) + "/dataset/collection_20240908-153517"
 
 
 def test_constructor(data_dir):
@@ -22,7 +22,9 @@ def test_constructor(data_dir):
     assert all([image_path.suffix == ".png" for image_path in data_loader.label_image_paths])
     assert [
         input_path != label_path
-        for input_path, label_path in zip(data_loader.input_image_paths, data_loader.label_image_paths)
+        for input_path, label_path in zip(
+            data_loader.input_image_paths, data_loader.label_image_paths
+        )
     ]
 
 
@@ -49,11 +51,13 @@ def test_batch_single(data_dir):
             for batch_inputs, batch_labels in data_loader
         ]
     )
-    assert (
-        len(set([(batch_inputs.shape, batch_labels.shape) for batch_inputs, batch_labels in data_loader]))
-        == 1
+    unique_batch_shapes = set(
+        [(batch_inputs.shape, batch_labels.shape) for batch_inputs, batch_labels in data_loader]
     )
-    assert all([batch_inputs.shape == batch_labels.shape for batch_inputs, batch_labels in data_loader])
+    assert len(unique_batch_shapes) == 1
+    assert all(
+        [batch_inputs.shape == batch_labels.shape for batch_inputs, batch_labels in data_loader]
+    )
     assert all(
         [
             batch_inputs.shape[0] == batch_size and batch_labels.shape[0] == batch_size
@@ -72,7 +76,9 @@ def test_batch_multiple(data_dir):
             for batch_inputs, batch_labels in data_loader
         ]
     )
-    batch_shapes = [(batch_inputs.shape, batch_labels.shape) for batch_inputs, batch_labels in data_loader]
+    batch_shapes = [
+        (batch_inputs.shape, batch_labels.shape) for batch_inputs, batch_labels in data_loader
+    ]
     assert [
         batch_input_shape == batch_label_shape
         for batch_input_shape, batch_label_shape in batch_shapes
@@ -84,8 +90,13 @@ def test_batch_multiple(data_dir):
         batch_input_shape[0] == batch_size and batch_label_shape[0] == batch_size
         for batch_input_shape, batch_label_shape in batch_shapes[:-1]
     ], "incorrect last batch size"
-    assert batch_shapes[-1][0][0] == data_loader.num_samples - ((len(batch_shapes) - 1) * batch_size)
-    assert sum([batch_input_shape[0] for batch_input_shape, _ in batch_shapes]) == data_loader.num_samples
+    assert batch_shapes[-1][0][0] == data_loader.num_samples - (
+        (len(batch_shapes) - 1) * batch_size
+    )
+    assert (
+        sum([batch_input_shape[0] for batch_input_shape, _ in batch_shapes])
+        == data_loader.num_samples
+    )
 
 
 def test_shuffle(data_dir):
