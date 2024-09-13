@@ -17,6 +17,19 @@ class FrameKeyDataLoader:
             " does not match number of label samples ({len(self.label_image_paths)})"
         )
         self.num_samples = len(self.input_image_paths)
+        # Lazy init
+        self._all_images: tuple[np.ndarray, np.ndarray] | None = None
+
+    @property
+    def all_images(self):
+        if self._all_images is None:
+            self._all_images = self._load_all()
+        return self._all_images
+
+    def _load_all(self) -> tuple[np.ndarray, np.ndarray]:
+        input_images = np.array([self._load_image(img_path) for img_path in self.input_image_paths])
+        label_images = np.array([self._load_image(img_path) for img_path in self.label_image_paths])
+        return input_images, label_images
 
     def _get_image_paths(self):
         all_image_paths = list(Path(self.path).rglob("*.png"))
