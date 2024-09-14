@@ -8,7 +8,7 @@ from glyptic.data import FrameKeyDataLoader
 
 @pytest.fixture(scope="module")
 def data_dir():
-    return str(Path(__file__).parent.parent) + "/dataset/collection_20240908-153517"
+    return str(Path(__file__).parent.parent) + "/dataset/training/collection_20240908-153517"
 
 
 def test_constructor(data_dir):
@@ -127,3 +127,13 @@ def test_no_shuffle(data_dir):
         all_epochs.append(epoch_means)
 
     assert all(all_epochs[i] == all_epochs[j] for i in range(epochs) for j in range(i + 1, epochs))
+
+
+def test_drop_last(data_dir):
+    expected_num_samples = 3000 - 1
+    batch_size = 20
+    data_loader = FrameKeyDataLoader(
+        path=data_dir, batch_size=batch_size, shuffle=False, drop_last=True
+    )
+    assert expected_num_samples % batch_size != 0  # Check in case test parameters get changed
+    assert data_loader.num_samples == (expected_num_samples - (expected_num_samples % batch_size))
