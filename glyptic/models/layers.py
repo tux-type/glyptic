@@ -1,8 +1,9 @@
-import jax.numpy as jnp
-import flax.linen as nn
 import math
-from jax import Array
 from typing import Sequence
+
+import flax.linen as nn
+from jax import Array
+import jax.numpy as jnp
 
 
 class SinusoidalEmbedding(nn.Module):
