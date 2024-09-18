@@ -1,12 +1,15 @@
-from typing import Any
 from datetime import datetime
+from typing import Any
+from pathlib import Path
 
 from clearml import Logger, Task
 from flax.training.train_state import TrainState
+from flax.training import orbax_utils
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import orbax.checkpoint
 
 from glyptic.data import FrameKeyDataLoader
 from glyptic.models.config import get_config
@@ -100,9 +103,9 @@ def eval_step(
 
 
 def train_and_evaluate(config: dict[str, Any]):
-    batch_rng = jax.random.key(config["rng_seed"])
+    base_rng = jax.random.key(config["rng_seed"])
 
-    train_rng, eval_rng, init_rng = jax.random.split(batch_rng, num=3)
+    train_rng, eval_rng, init_rng = jax.random.split(base_rng, num=3)
     state = create_train_state(rng=init_rng, config=config)
 
     # Decide how to change data as jax.Array and move it to GPU efficiently
@@ -156,14 +159,18 @@ def train_and_evaluate(config: dict[str, Any]):
             value=float(np.mean(validation_loss)),
             iteration=epoch,
         )
-    # TODO: Save model
+    checkpoint = {"model": state, "config": config}
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    save_args = orbax_utils.save_args_from_target(checkpoint)
+    orbax_checkpointer.save(
+        str(Path.cwd()) + "/models/glyptic-dev", checkpoint, save_args=save_args, force=True
+    )
 
 
 def main():
     jax.config.update("jax_debug_nans", True)
     today = datetime.today().strftime("%Y%m%d")
     task: Task = Task.init(project_name="glyptic", task_name="experiment_lowerish_lr" + today)
-    # Logger.set_reporting_nan_value()
     config = get_config()
     task.connect(config)
     train_and_evaluate(config)
