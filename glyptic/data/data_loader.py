@@ -6,7 +6,7 @@ import numpy as np
 
 
 class FrameKeyDataLoader:
-    def __init__(self, path: str, batch_size: int = 1, shuffle: bool = False):
+    def __init__(self, path: str, batch_size: int = 1, shuffle: bool = False, drop_last=False):
         self.path = path
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -16,10 +16,27 @@ class FrameKeyDataLoader:
             f"number of input samples ({len(self.input_image_paths)})"
             " does not match number of label samples ({len(self.label_image_paths)})"
         )
+        if drop_last:
+            leftover = len(self.input_image_paths) % self.batch_size
+            self.input_image_paths = self.input_image_paths[:-leftover]
+            self.label_image_paths = self.label_image_paths[:-leftover]
         self.num_samples = len(self.input_image_paths)
+        # Lazy init
+        self._all_images: tuple[np.ndarray, np.ndarray] | None = None
+
+    @property
+    def all_images(self):
+        if self._all_images is None:
+            self._all_images = self._load_all()
+        return self._all_images
+
+    def _load_all(self) -> tuple[np.ndarray, np.ndarray]:
+        input_images = np.array([self._load_image(img_path) for img_path in self.input_image_paths])
+        label_images = np.array([self._load_image(img_path) for img_path in self.label_image_paths])
+        return input_images, label_images
 
     def _get_image_paths(self):
-        all_image_paths = list(Path(self.path).rglob("*.png"))
+        all_image_paths = sorted(list(Path(self.path).rglob("*.png")))
 
         # Pairing up consecutive imgaes into (input, label) results in (n - 1) samples.
         input_image_paths = all_image_paths[:-1]
