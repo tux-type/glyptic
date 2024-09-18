@@ -138,23 +138,24 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
             train_rng, batch_rng = jax.random.split(train_rng)
             x = jax.vmap(preprocess)(jnp.array(x))
             state, loss, grads = train_step(state, x0_batch=x, config=config, rng=batch_rng)
-            # TODO: Fix iteration to account for epoch
             iteration = (batch_i + 1) * len(x)
+            total_iteration = (data_loader.num_samples * (epoch - 1)) + iteration
             if track:
                 Logger.current_logger().report_scalar(
                     title="train",
                     series="mse_loss",
                     value=float(np.mean(loss)),
-                    iteration=iteration,
+                    iteration=total_iteration,
                 )
                 Logger.current_logger().report_scalar(
                     title="train",
                     series="grads_fro",
                     # Frobenius norm
                     value=float(jnp.sqrt(sum(jnp.sum(g**2) for g in jax.tree.leaves(grads)))),
-                    iteration=iteration,
+                    iteration=total_iteration,
                 )
-            print(f"loss: {loss:>7f}  [{iteration:>5d}/{data_loader.num_samples:>5d}]")
+            if batch_i % 10 == 0:
+                print(f"loss: {loss:>7f}  [{iteration:>5d}/{data_loader.num_samples:>5d}]")
 
         # Evaluate
         # -------------------------------------------
@@ -187,7 +188,7 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
 
 def main():
     jax.config.update("jax_debug_nans", True)
-    today = datetime.today().strftime("%Y%m%d")
+    today = datetime.today().strftime("%Y%m%d-%H%M%S")
     task: Task = Task.init(project_name="glyptic", task_name="experiment_lowerish_lr" + today)
     config = get_config()
     task.connect(config)
