@@ -38,9 +38,9 @@ def test_residual_block():
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    rb = ResidualBlock(filters=out_channels, num_groups=32)
+    rb = ResidualBlock(filters=out_channels, num_groups=32, dropout_rate=0.1, train=True)
     params = rb.init(key, inputs, times)
-    outputs = rb.apply(params, inputs, times)
+    outputs = rb.apply(params, inputs, times, rngs={"dropout": key})
     assert isinstance(outputs, Array)
     assert outputs.shape == (batch_size, height, width, out_channels)
 
@@ -69,9 +69,9 @@ def test_down_block():
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    db = DownBlock(features=out_channels, with_attention=True)
+    db = DownBlock(features=out_channels, with_attention=True, dropout_rate=0.1, train=True)
     params = db.init(key, inputs, times)
-    outputs = db.apply(params, inputs, times)
+    outputs = db.apply(params, inputs, times, rngs={"dropout": key})
     assert isinstance(outputs, Array)
     assert outputs.shape == (batch_size, height, width, out_channels)
 
@@ -85,9 +85,9 @@ def test_up_block():
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    ub = UpBlock(features=out_channels, with_attention=True)
+    ub = UpBlock(features=out_channels, with_attention=True, dropout_rate=0.1, train=True)
     params = ub.init(key, inputs, times)
-    outputs = ub.apply(params, inputs, times)
+    outputs = ub.apply(params, inputs, times, rngs={"dropout": key})
     assert isinstance(outputs, Array)
     assert outputs.shape == (batch_size, height, width, out_channels)
 
@@ -101,9 +101,9 @@ def test_middle_block():
     inputs = jnp.ones((batch_size, height, width, channels), jnp.float32)
     times = random.uniform(key, shape=(batch_size, channels), minval=0, maxval=1, dtype=jnp.float32)
 
-    mb = MiddleBlock(features=out_channels)
+    mb = MiddleBlock(features=out_channels, dropout_rate=0.1, train=True)
     params = mb.init(key, inputs, times)
-    outputs = mb.apply(params, inputs, times)
+    outputs = mb.apply(params, inputs, times, rngs={"dropout": key})
     assert isinstance(outputs, Array)
     assert outputs.shape == (batch_size, height, width, out_channels)
 
@@ -147,12 +147,14 @@ def test_unet():
     times = random.randint(key, shape=(batch_size,), minval=0, maxval=num_steps)
 
     unet = UNet(
+        train=True,
         num_channels=initial_channels,
         channel_multipliers=(1, 2, 2, 4),
         use_attention=(False, False, True, True),
         num_blocks=2,
+        dropout_rate=0.1,
     )
     params = unet.init(key, inputs, times)
-    outputs = unet.apply(params, inputs, times)
+    outputs = unet.apply(params, inputs, times, rngs={"dropout": key})
     assert isinstance(outputs, Array)
     assert outputs.shape == (batch_size, height, width, channels)
