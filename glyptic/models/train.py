@@ -19,10 +19,12 @@ from glyptic.models.sample import create_noise_schedule, q_sample
 
 def create_train_state(rng: jax.Array, config: dict[str, Any]):
     unet = UNet(
+        train=True,
         num_channels=config["initial_channels"],
         channel_multipliers=config["channel_multipliers"],
         use_attention=config["blocks_with_attention"],
         num_blocks=config["num_blocks"],
+        dropout_rate=config["dropout_rate"],
     )
     mock_images = jnp.ones(shape=(1, config["image_height"], config["image_width"], 3))
     mock_times = jnp.ones(shape=(1,))
@@ -39,10 +41,16 @@ def preprocess(image: jax.Array):
 
 @jax.jit
 def apply_model(
-    state: TrainState, xt_batch: jax.Array, times_batch: jax.Array, epsilon_batch: jax.Array
+    state: TrainState,
+    xt_batch: jax.Array,
+    times_batch: jax.Array,
+    epsilon_batch: jax.Array,
+    dropout_rng: jax.Array,
 ):
     grad_function = jax.value_and_grad(loss_fn, argnums=0)
-    loss, grads = grad_function(state.params, state, xt_batch, times_batch, epsilon_batch)
+    loss, grads = grad_function(
+        state.params, state, xt_batch, times_batch, epsilon_batch, dropout_rng
+    )
     return loss, grads
 
 
@@ -53,8 +61,11 @@ def loss_fn(
     xt_batch: jax.Array,
     times_batch: jax.Array,
     epsilon_batch: jax.Array,
+    dropout_rng: jax.Array,
 ) -> jax.Array:
-    epsilon_theta = state.apply_fn({"params": params}, xt_batch, times_batch)
+    epsilon_theta = state.apply_fn(
+        {"params": params}, xt_batch, times_batch, rngs={"dropout": dropout_rng}
+    )
     loss = optax.l2_loss(epsilon_theta, epsilon_batch)
     return jnp.mean(loss)
 
@@ -62,7 +73,7 @@ def loss_fn(
 def train_step(
     state: TrainState, x0_batch: jax.Array, config: dict[str, Any], rng: jax.Array
 ) -> tuple[TrainState, jax.Array, dict]:
-    times_rng, noise_rng = jax.random.split(rng)
+    times_rng, noise_rng, dropout_rng = jax.random.split(rng, num=3)
     noise_schedule = create_noise_schedule(num_steps=config["num_steps"])
     batch_size = x0_batch.shape[0]
     times_batch = jax.random.randint(
@@ -73,7 +84,11 @@ def train_step(
         alpha_bar=noise_schedule["alpha_bar"], x0=x0_batch, times=times_batch, epsilon=noise_batch
     )
     loss, grads = apply_model(
-        state=state, xt_batch=xt_batch, times_batch=times_batch, epsilon_batch=noise_batch
+        state=state,
+        xt_batch=xt_batch,
+        times_batch=times_batch,
+        epsilon_batch=noise_batch,
+        dropout_rng=dropout_rng,
     )
     state = state.apply_gradients(grads=grads)
     return state, loss, grads
@@ -82,7 +97,7 @@ def train_step(
 def eval_step(
     state: TrainState, x0_batch: jax.Array, config: dict[str, Any], rng: jax.Array
 ) -> jax.Array:
-    times_rng, noise_rng = jax.random.split(rng)
+    times_rng, noise_rng, dropout_rng = jax.random.split(rng, num=3)
     noise_schedule = create_noise_schedule(num_steps=config["num_steps"])
     batch_size = x0_batch.shape[0]
     times_batch = jax.random.randint(
@@ -98,11 +113,12 @@ def eval_step(
         xt_batch=xt_batch,
         times_batch=times_batch,
         epsilon_batch=noise_batch,
+        dropout_rng=dropout_rng,
     )
     return loss
 
 
-def train_and_evaluate(config: dict[str, Any]):
+def train_and_evaluate(config: dict[str, Any], track: bool = False):
     base_rng = jax.random.key(config["rng_seed"])
 
     train_rng, eval_rng, init_rng = jax.random.split(base_rng, num=3)
@@ -123,21 +139,23 @@ def train_and_evaluate(config: dict[str, Any]):
             x = jax.vmap(preprocess)(jnp.array(x))
             state, loss, grads = train_step(state, x0_batch=x, config=config, rng=batch_rng)
             iteration = (batch_i + 1) * len(x)
-            # TODO: Add logging interval
-            Logger.current_logger().report_scalar(
-                title="train",
-                series="mse_loss",
-                value=float(np.mean(loss)),
-                iteration=iteration,
-            )
-            Logger.current_logger().report_scalar(
-                title="train",
-                series="grads_fro",
-                # Frobenius norm
-                value=float(jnp.sqrt(sum(jnp.sum(g**2) for g in jax.tree.leaves(grads)))),
-                iteration=iteration,
-            )
-            print(f"loss: {loss:>7f}  [{iteration:>5d}/{data_loader.num_samples:>5d}]")
+            total_iteration = (data_loader.num_samples * (epoch - 1)) + iteration
+            if track:
+                Logger.current_logger().report_scalar(
+                    title="train",
+                    series="mse_loss",
+                    value=float(np.mean(loss)),
+                    iteration=total_iteration,
+                )
+                Logger.current_logger().report_scalar(
+                    title="train",
+                    series="grads_fro",
+                    # Frobenius norm
+                    value=float(jnp.sqrt(sum(jnp.sum(g**2) for g in jax.tree.leaves(grads)))),
+                    iteration=total_iteration,
+                )
+            if batch_i % 10 == 0:
+                print(f"loss: {loss:>7f}  [{iteration:>5d}/{data_loader.num_samples:>5d}]")
 
         # Evaluate
         # -------------------------------------------
@@ -153,12 +171,13 @@ def train_and_evaluate(config: dict[str, Any]):
             )
             validation_loss.append(eval_loss)
 
-        Logger.current_logger().report_scalar(
-            title="validation",
-            series="mse_loss",
-            value=float(np.mean(validation_loss)),
-            iteration=epoch,
-        )
+        if track:
+            Logger.current_logger().report_scalar(
+                title="validation",
+                series="mse_loss",
+                value=float(np.mean(validation_loss)),
+                iteration=epoch,
+            )
     checkpoint = {"model": state, "config": config}
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
     save_args = orbax_utils.save_args_from_target(checkpoint)
@@ -169,11 +188,11 @@ def train_and_evaluate(config: dict[str, Any]):
 
 def main():
     jax.config.update("jax_debug_nans", True)
-    today = datetime.today().strftime("%Y%m%d")
+    today = datetime.today().strftime("%Y%m%d-%H%M%S")
     task: Task = Task.init(project_name="glyptic", task_name="experiment_lowerish_lr" + today)
     config = get_config()
     task.connect(config)
-    train_and_evaluate(config)
+    train_and_evaluate(config, track=True)
 
 
 if __name__ == "__main__":

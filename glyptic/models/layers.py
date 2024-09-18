@@ -28,12 +28,13 @@ class SinusoidalEmbedding(nn.Module):
 
 class ResidualBlock(nn.Module):
     filters: int
+    dropout_rate: float
+    train: bool
     num_groups: int = 32
 
     @nn.compact
     def __call__(self, x: Array, times: Array) -> Array:
         # TODO: Check: order of norm, act, conv; whether to norm on residual
-        # TODO: Add dropout
         residual = x
         out = nn.GroupNorm(num_groups=self.num_groups)(x)
         out = nn.swish(out)
@@ -44,6 +45,7 @@ class ResidualBlock(nn.Module):
 
         out = nn.GroupNorm(num_groups=self.num_groups)(out)
         out = nn.swish(out)
+        out = nn.Dropout(self.dropout_rate, deterministic=not self.train)(out)
         out = nn.Conv(self.filters, kernel_size=(3, 3), padding=(1, 1))(out)
 
         if residual.shape != out.shape:
@@ -85,11 +87,15 @@ class AttentionBlock(nn.Module):
 
 class DownBlock(nn.Module):
     features: int
+    dropout_rate: float
+    train: bool
     with_attention: bool = False
 
     @nn.compact
     def __call__(self, x: Array, times: Array) -> Array:
-        out = ResidualBlock(filters=self.features)(x, times)
+        out = ResidualBlock(
+            filters=self.features, dropout_rate=self.dropout_rate, train=self.train
+        )(x, times)
         if self.with_attention:
             out = AttentionBlock()(out)
 
@@ -98,11 +104,15 @@ class DownBlock(nn.Module):
 
 class UpBlock(nn.Module):
     features: int
+    dropout_rate: float
+    train: bool
     with_attention: bool = False
 
     @nn.compact
     def __call__(self, x: Array, times: Array) -> Array:
-        out = ResidualBlock(filters=self.features)(x, times)
+        out = ResidualBlock(
+            filters=self.features, dropout_rate=self.dropout_rate, train=self.train
+        )(x, times)
         if self.with_attention:
             out = AttentionBlock()(out)
         return out
@@ -110,12 +120,18 @@ class UpBlock(nn.Module):
 
 class MiddleBlock(nn.Module):
     features: int
+    dropout_rate: float
+    train: bool
 
     @nn.compact
     def __call__(self, x: Array, times: Array) -> Array:
-        out = ResidualBlock(filters=self.features)(x, times)
+        out = ResidualBlock(
+            filters=self.features, dropout_rate=self.dropout_rate, train=self.train
+        )(x, times)
         out = AttentionBlock()(out)
-        out = ResidualBlock(filters=self.features)(x, times)
+        out = ResidualBlock(
+            filters=self.features, dropout_rate=self.dropout_rate, train=self.train
+        )(x, times)
         return out
 
 
@@ -141,10 +157,12 @@ class UpSample(nn.Module):
 
 
 class UNet(nn.Module):
+    train: bool
     num_channels: int = 64
     channel_multipliers: Sequence[int] = (1, 2, 2, 4)
     use_attention: Sequence[bool] = (False, False, True, True)
     num_blocks: int = 2
+    dropout_rate: float = 0.1
 
     def setup(self):
         num_resolutions = len(self.channel_multipliers)
@@ -160,23 +178,46 @@ class UNet(nn.Module):
             out_channels = out_channels * self.channel_multipliers[i]
 
             for _ in range(self.num_blocks):
-                down_blocks.append(DownBlock(out_channels, self.use_attention[i]))
+                down_blocks.append(
+                    DownBlock(
+                        out_channels,
+                        dropout_rate=self.dropout_rate,
+                        train=self.train,
+                        with_attention=self.use_attention[i],
+                    )
+                )
 
             if i < num_resolutions - 1:
                 down_blocks.append(DownSample())
 
         self.down_blocks = down_blocks
 
-        self.middle_block = MiddleBlock(out_channels)
+        self.middle_block = MiddleBlock(
+            out_channels, dropout_rate=self.dropout_rate, train=self.train
+        )
 
         up_blocks = []
 
         for i in reversed(range(num_resolutions)):
             for _ in range(self.num_blocks):
-                up_blocks.append(UpBlock(out_channels, self.use_attention[i]))
+                up_blocks.append(
+                    UpBlock(
+                        out_channels,
+                        dropout_rate=self.dropout_rate,
+                        train=self.train,
+                        with_attention=self.use_attention[i],
+                    )
+                )
 
             out_channels = out_channels // self.channel_multipliers[i]
-            up_blocks.append(UpBlock(out_channels, self.use_attention[i]))
+            up_blocks.append(
+                UpBlock(
+                    out_channels,
+                    dropout_rate=self.dropout_rate,
+                    train=self.train,
+                    with_attention=self.use_attention[i],
+                )
+            )
 
             if i > 0:
                 up_blocks.append(UpSample())

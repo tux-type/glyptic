@@ -15,6 +15,7 @@ def get_config() -> dict[str, Any]:
         channel_multipliers=(1, 2, 2, 2),
         blocks_with_attention=(False, False, True, True),
         num_blocks=2,
+        dropout_rate=0.1,
         train_data_dir="data/training/collection_20240908-153517",
         val_data_dir="data/validation/collection_20240914-154513",
     )

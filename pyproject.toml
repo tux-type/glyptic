@@ -21,7 +21,8 @@ dependencies = [
 tests = ["pytest>=8.3.2"]
 
 [tool.setuptools.packages.find]
-where = ["glyptic"]
+where = ["."]
+include = ["glyptic"]
 
 [tool.ruff]
 line-length=100
