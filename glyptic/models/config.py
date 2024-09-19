@@ -16,6 +16,7 @@ def get_config() -> dict[str, Any]:
         blocks_with_attention=(False, False, True, True),
         num_blocks=2,
         dropout_rate=0.1,
+        clip_max_norm=1.0,
         train_data_dir="data/training/collection_20240908-153517",
         val_data_dir="data/validation/collection_20240914-154513",
     )

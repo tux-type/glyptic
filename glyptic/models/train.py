@@ -29,7 +29,10 @@ def create_train_state(rng: jax.Array, config: dict[str, Any]):
     mock_images = jnp.ones(shape=(1, config["image_height"], config["image_width"], 3))
     mock_times = jnp.ones(shape=(1,))
     params = unet.init(rng, mock_images, mock_times)["params"]
-    tx = optax.adam(learning_rate=config["learning_rate"])
+    tx = optax.chain(
+        optax.clip_by_global_norm(max_norm=config["clip_max_norm"]),
+        optax.adam(learning_rate=config["learning_rate"]),
+    )
     return TrainState.create(apply_fn=unet.apply, params=params, tx=tx)
 
 
