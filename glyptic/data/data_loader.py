@@ -6,10 +6,20 @@ import numpy as np
 
 
 class FrameKeyDataLoader:
-    def __init__(self, path: str, batch_size: int = 1, shuffle: bool = False, drop_last=False):
+    def __init__(
+        self,
+        path: str,
+        batch_size: int = 1,
+        shuffle: bool = False,
+        drop_last=False,
+        seed: int | None = None,
+    ):
         self.path = path
         self.batch_size = batch_size
         self.shuffle = shuffle
+        if shuffle and seed is not None:
+            random.seed(seed)
+
         # TODO: Improve efficiency by reusing loaded images (only load once)
         self.input_image_paths, self.label_image_paths = self._get_image_paths()
         assert len(self.input_image_paths) == len(self.label_image_paths), (
