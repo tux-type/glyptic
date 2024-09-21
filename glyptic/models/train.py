@@ -75,7 +75,7 @@ def loss_fn(
 
 def train_step(
     state: TrainState, x0_batch: jax.Array, config: dict[str, Any], rng: jax.Array
-) -> tuple[TrainState, jax.Array, dict]:
+) -> tuple[TrainState, jax.Array, optax.Updates]:
     times_rng, noise_rng, dropout_rng = jax.random.split(rng, num=3)
     noise_schedule = create_noise_schedule(num_steps=config["num_steps"])
     batch_size = x0_batch.shape[0]
@@ -93,8 +93,9 @@ def train_step(
         epsilon_batch=noise_batch,
         dropout_rng=dropout_rng,
     )
+    processed_grads, _ = state.tx.update(grads, state.opt_state, state.params)
     state = state.apply_gradients(grads=grads)
-    return state, loss, grads
+    return state, loss, processed_grads
 
 
 def eval_step(
@@ -129,10 +130,18 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
 
     # Decide how to change data as jax.Array and move it to GPU efficiently
     data_loader = FrameKeyDataLoader(
-        config["train_data_dir"], batch_size=config["batch_size"], shuffle=True, drop_last=True
+        config["train_data_dir"],
+        batch_size=config["batch_size"],
+        shuffle=True,
+        drop_last=True,
+        seed=config["rng_seed"],
     )
     eval_data_loader = FrameKeyDataLoader(
-        config["val_data_dir"], batch_size=config["batch_size"], shuffle=True, drop_last=True
+        config["val_data_dir"],
+        batch_size=config["batch_size"],
+        shuffle=True,
+        drop_last=True,
+        seed=config["rng_seed"],
     )
 
     for epoch in range(1, config["num_epochs"] + 1):
