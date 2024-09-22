@@ -137,3 +137,28 @@ def test_drop_last(data_dir):
     )
     assert expected_num_samples % batch_size != 0  # Check in case test parameters get changed
     assert data_loader.num_samples == (expected_num_samples - (expected_num_samples % batch_size))
+
+
+def test_load_all(data_dir):
+    batch_size = 20
+    seed = 123
+    data_loader_iterative_load = FrameKeyDataLoader(
+        path=data_dir,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+        seed=seed,
+        load_all=False,
+    )
+    data_loader_load_all = FrameKeyDataLoader(
+        path=data_dir,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+        seed=seed,
+        load_all=True,
+    )
+
+    for (x_it, y_it), (x_all, y_all) in zip(data_loader_iterative_load, data_loader_load_all):
+        assert np.array_equal(x_it, x_all)
+        assert np.array_equal(y_it, y_all)

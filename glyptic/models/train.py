@@ -135,6 +135,7 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
         shuffle=True,
         drop_last=True,
         seed=config["rng_seed"],
+        load_all=True,
     )
     eval_data_loader = FrameKeyDataLoader(
         config["val_data_dir"],
@@ -142,6 +143,7 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
         shuffle=True,
         drop_last=True,
         seed=config["rng_seed"],
+        load_all=True,
     )
 
     for epoch in range(1, config["num_epochs"] + 1):
@@ -199,9 +201,8 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
 
 
 def main():
-    jax.config.update("jax_debug_nans", True)
     today = datetime.today().strftime("%Y%m%d-%H%M%S")
-    task: Task = Task.init(project_name="glyptic", task_name="experiment_lowerish_lr" + today)
+    task: Task = Task.init(project_name="glyptic", task_name="experiment_" + today)
     config = get_config()
     task.connect(config)
     train_and_evaluate(config, track=True)
