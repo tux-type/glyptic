@@ -13,12 +13,15 @@ class FrameKeyDataLoader:
         shuffle: bool = False,
         drop_last=False,
         seed: int | None = None,
+        load_all: bool = False,
     ):
         self.path = path
         self.batch_size = batch_size
         self.shuffle = shuffle
-        if shuffle and seed is not None:
-            random.seed(seed)
+        self.load_all = load_all
+
+        if self.shuffle:
+            self.rng = random.Random(seed) if seed is not None else random.Random()
 
         # TODO: Improve efficiency by reusing loaded images (only load once)
         self.input_image_paths, self.label_image_paths = self._get_image_paths()
@@ -60,17 +63,31 @@ class FrameKeyDataLoader:
     def __iter__(self):
         indices = list(range(self.num_samples))
         if self.shuffle:
-            random.shuffle(indices)
+            self.rng.shuffle(indices)
 
-        for start_idx in range(0, self.num_samples, self.batch_size):
-            batch_indices = indices[start_idx : (start_idx + self.batch_size)]
-            batch_input_images = [
-                self._load_image(self.input_image_paths[i]) for i in batch_indices
+        if self.load_all:
+            # Load all images in original order for consistent batches with load_all = False
+            all_input_images = [
+                self._load_image(self.input_image_paths[i]) for i in list(range(self.num_samples))
             ]
-            batch_label_images = [
-                self._load_image(self.label_image_paths[i]) for i in batch_indices
+            all_label_images = [
+                self._load_image(self.label_image_paths[i]) for i in list(range(self.num_samples))
             ]
-            yield np.array(batch_input_images), np.array(batch_label_images)
+            for start_idx in range(0, self.num_samples, self.batch_size):
+                batch_indices = indices[start_idx : (start_idx + self.batch_size)]
+                batch_input_images = [all_input_images[i] for i in batch_indices]
+                batch_label_images = [all_label_images[i] for i in batch_indices]
+                yield np.array(batch_input_images), np.array(batch_label_images)
+        else:
+            for start_idx in range(0, self.num_samples, self.batch_size):
+                batch_indices = indices[start_idx : (start_idx + self.batch_size)]
+                batch_input_images = [
+                    self._load_image(self.input_image_paths[i]) for i in batch_indices
+                ]
+                batch_label_images = [
+                    self._load_image(self.label_image_paths[i]) for i in batch_indices
+                ]
+                yield np.array(batch_input_images), np.array(batch_label_images)
 
     def __len__(self):
         return (self.num_samples + self.batch_size - 1) // self.batch_size
