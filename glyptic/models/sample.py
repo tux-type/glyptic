@@ -36,7 +36,7 @@ def p_sample(
     epsilon_theta,
     xt: jax.Array,
     times: jax.Array,
-):
+) -> jax.Array:
     alpha_bar = noise_schedule["alpha_bar"][times].reshape(-1, 1, 1, 1)
     alpha = noise_schedule["alpha"][times].reshape(-1, 1, 1, 1)
     epsilon_coef = (1 - alpha) / (1 - alpha_bar) ** 0.5
