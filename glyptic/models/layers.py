@@ -97,6 +97,7 @@ class DownBlock(nn.Module):
             filters=self.features, dropout_rate=self.dropout_rate, train=self.train
         )(x, times)
         if self.with_attention:
+            # TODO: Determine if it would be better to have groupnorm and skip here also?
             out = AttentionBlock()(out)
 
         return out
