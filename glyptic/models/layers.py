@@ -131,7 +131,6 @@ class MiddleBlock(nn.Module):
             filters=self.features, dropout_rate=self.dropout_rate, train=self.train
         )(x, times)
         # out = AttentionBlock()(out)
-        # TODO: MISTAKE original called (x, times) instead of (out, times)
         out = ResidualBlock(
             filters=self.features, dropout_rate=self.dropout_rate, train=self.train
         )(out, times)
