@@ -3,6 +3,7 @@ from typing import Sequence
 
 import flax.linen as nn
 from jax import Array
+import jax
 import jax.numpy as jnp
 
 
@@ -34,7 +35,6 @@ class ResidualBlock(nn.Module):
 
     @nn.compact
     def __call__(self, x: Array, times: Array) -> Array:
-        # TODO: Check: order of norm, act, conv; whether to norm on residual
         residual = x
         out = nn.GroupNorm(num_groups=self.num_groups)(x)
         out = nn.swish(out)
@@ -45,7 +45,8 @@ class ResidualBlock(nn.Module):
 
         out = nn.GroupNorm(num_groups=self.num_groups)(out)
         out = nn.swish(out)
-        out = nn.Dropout(self.dropout_rate, deterministic=not self.train)(out)
+        out = nn.Dropout(self.dropout_rate, deterministic=True)(out)
+        # out = nn.Dropout(self.dropout_rate, deterministic=not self.train)(out)
         out = nn.Conv(self.filters, kernel_size=(3, 3), padding=(1, 1))(out)
 
         if residual.shape != out.shape:
@@ -97,6 +98,7 @@ class DownBlock(nn.Module):
             filters=self.features, dropout_rate=self.dropout_rate, train=self.train
         )(x, times)
         if self.with_attention:
+            # TODO: Determine if it would be better to have groupnorm and skip here also?
             out = AttentionBlock()(out)
 
         return out
@@ -128,10 +130,10 @@ class MiddleBlock(nn.Module):
         out = ResidualBlock(
             filters=self.features, dropout_rate=self.dropout_rate, train=self.train
         )(x, times)
-        out = AttentionBlock()(out)
+        # out = AttentionBlock()(out)
         out = ResidualBlock(
             filters=self.features, dropout_rate=self.dropout_rate, train=self.train
-        )(x, times)
+        )(out, times)
         return out
 
 
@@ -139,8 +141,10 @@ class DownSample(nn.Module):
     @nn.compact
     def __call__(self, x: Array, *_) -> Array:
         # Keeping number of channels the same
-        features = x.shape[-1]
-        out = nn.Conv(features, kernel_size=(3, 3), strides=(2, 2), padding=(1, 1))(x)
+        # features = x.shape[-1]
+        # out = nn.Conv(features, kernel_size=(3, 3), strides=(2, 2), padding=(1, 1))(x)
+
+        out = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2), padding="VALID")
         return out
 
 
@@ -149,10 +153,14 @@ class UpSample(nn.Module):
     @nn.compact
     def __call__(self, x: Array, *_) -> Array:
         # Keeping number of channels the same
-        features = x.shape[-1]
+        # features = x.shape[-1]
         # TODO: Might need to change as not equivalent to torch ConvTranspose2D
         # https://github.com/google/flax/issues/1872
-        out = nn.ConvTranspose(features, kernel_size=(4, 4), strides=(2, 2), padding="SAME")(x)
+        # out = nn.ConvTranspose(features, kernel_size=(4, 4), strides=(2, 2), padding="SAME")(x)
+
+        B, H, W, C = x.shape
+        out = jax.image.resize(x, shape=(B, H * 2, W * 2, C), method="bilinear")
+        out = nn.Conv(C, kernel_size=(3, 3), padding=(1, 1))(out)
         return out
 
 
@@ -230,7 +238,7 @@ class UNet(nn.Module):
 
     def __call__(self, x: Array, times: Array) -> Array:
         x = self.image_projection(x)
-        times = self.time_embedding(times)
+        times = self.time_embedding(times)  # batch_size, num_channels
 
         hidden_states = [x]
 

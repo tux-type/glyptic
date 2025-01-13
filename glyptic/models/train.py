@@ -1,10 +1,11 @@
 from datetime import datetime
-from typing import Any
 from pathlib import Path
+from typing import Any, Callable
 
 from clearml import Logger, Task
-from flax.training.train_state import TrainState
+from flax.core import FrozenDict
 from flax.training import orbax_utils
+from flax.training.train_state import TrainState
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -17,7 +18,18 @@ from glyptic.models.layers import UNet
 from glyptic.models.sample import create_noise_schedule, q_sample
 
 
-def create_train_state(rng: jax.Array, config: dict[str, Any]):
+def create_learning_rate_fn(config: dict[str, Any], steps_per_epoch: int):
+    lr_schedule = optax.warmup_cosine_decay_schedule(
+        init_value=0.0,
+        peak_value=config["learning_rate"],
+        warmup_steps=config["warmup_epochs"] * steps_per_epoch,
+        decay_steps=config["num_epochs"] * steps_per_epoch,
+        end_value=0.0,
+    )
+    return lr_schedule
+
+
+def create_train_state(rng: jax.Array, config: dict[str, Any], learning_rate_fn: Callable):
     unet = UNet(
         train=True,
         num_channels=config["initial_channels"],
@@ -30,8 +42,9 @@ def create_train_state(rng: jax.Array, config: dict[str, Any]):
     mock_times = jnp.ones(shape=(1,))
     params = unet.init(rng, mock_images, mock_times)["params"]
     tx = optax.chain(
-        optax.clip_by_global_norm(max_norm=config["clip_max_norm"]),
-        optax.adam(learning_rate=config["learning_rate"]),
+        # optax.sgd(learning_rate=learning_rate_fn, momentum=config["momentum"], nesterov=True)
+        # optax.clip_by_global_norm(max_norm=1.0),
+        optax.adamw(learning_rate=learning_rate_fn),
     )
     return TrainState.create(apply_fn=unet.apply, params=params, tx=tx)
 
@@ -39,6 +52,9 @@ def create_train_state(rng: jax.Array, config: dict[str, Any]):
 @jax.jit
 def preprocess(image: jax.Array):
     image = image.astype(jnp.float32) / 255.0
+    # TODO: Consider alternative scaling methods
+    # Scale values between -1 and 1
+    image = (image * 2) - 1
     return image
 
 
@@ -69,15 +85,20 @@ def loss_fn(
     epsilon_theta = state.apply_fn(
         {"params": params}, xt_batch, times_batch, rngs={"dropout": dropout_rng}
     )
+    # loss = optax.huber_loss(epsilon_theta, epsilon_batch)
     loss = optax.l2_loss(epsilon_theta, epsilon_batch)
     return jnp.mean(loss)
 
 
 def train_step(
-    state: TrainState, x0_batch: jax.Array, config: dict[str, Any], rng: jax.Array
-) -> tuple[TrainState, jax.Array, optax.Updates]:
+    state: TrainState,
+    x0_batch: jax.Array,
+    noise_schedule: FrozenDict,
+    config: dict[str, Any],
+    rng: jax.Array,
+    learning_rate_fn: Callable,
+) -> tuple[TrainState, jax.Array, optax.Updates, float]:
     times_rng, noise_rng, dropout_rng = jax.random.split(rng, num=3)
-    noise_schedule = create_noise_schedule(num_steps=config["num_steps"])
     batch_size = x0_batch.shape[0]
     times_batch = jax.random.randint(
         times_rng, shape=(batch_size,), minval=0, maxval=config["num_steps"]
@@ -95,14 +116,18 @@ def train_step(
     )
     processed_grads, _ = state.tx.update(grads, state.opt_state, state.params)
     state = state.apply_gradients(grads=grads)
-    return state, loss, processed_grads
+    lr = learning_rate_fn(state.step)
+    return state, loss, processed_grads, lr
 
 
 def eval_step(
-    state: TrainState, x0_batch: jax.Array, config: dict[str, Any], rng: jax.Array
+    state: TrainState,
+    x0_batch: jax.Array,
+    noise_schedule: FrozenDict,
+    config: dict[str, Any],
+    rng: jax.Array,
 ) -> jax.Array:
     times_rng, noise_rng, dropout_rng = jax.random.split(rng, num=3)
-    noise_schedule = create_noise_schedule(num_steps=config["num_steps"])
     batch_size = x0_batch.shape[0]
     times_batch = jax.random.randint(
         times_rng, shape=(batch_size,), minval=0, maxval=config["num_steps"]
@@ -126,7 +151,6 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
     base_rng = jax.random.key(config["rng_seed"])
 
     train_rng, eval_rng, init_rng = jax.random.split(base_rng, num=3)
-    state = create_train_state(rng=init_rng, config=config)
 
     # Decide how to change data as jax.Array and move it to GPU efficiently
     data_loader = FrameKeyDataLoader(
@@ -146,18 +170,31 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
         load_all=True,
     )
 
+    learning_rate_fn = create_learning_rate_fn(config=config, steps_per_epoch=len(data_loader))
+    state = create_train_state(rng=init_rng, config=config, learning_rate_fn=learning_rate_fn)
+    noise_schedule = create_noise_schedule(
+        method=config["noise_schedule_method"], num_steps=config["num_steps"]
+    )
+
     for epoch in range(1, config["num_epochs"] + 1):
         print(f"Epoch {epoch}\n-------------------------------")
         for batch_i, (x, y) in enumerate(data_loader):
             train_rng, batch_rng = jax.random.split(train_rng)
             x = jax.vmap(preprocess)(jnp.array(x))
-            state, loss, grads = train_step(state, x0_batch=x, config=config, rng=batch_rng)
+            state, loss, grads, lr = train_step(
+                state,
+                x0_batch=x,
+                noise_schedule=noise_schedule,
+                config=config,
+                rng=batch_rng,
+                learning_rate_fn=learning_rate_fn,
+            )
             iteration = (batch_i + 1) * len(x)
             total_iteration = (data_loader.num_samples * (epoch - 1)) + iteration
             if track:
                 Logger.current_logger().report_scalar(
                     title="train",
-                    series="mse_loss",
+                    series="loss",
                     value=float(np.mean(loss)),
                     iteration=total_iteration,
                 )
@@ -166,6 +203,12 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
                     series="grads_fro",
                     # Frobenius norm
                     value=float(jnp.sqrt(sum(jnp.sum(g**2) for g in jax.tree.leaves(grads)))),
+                    iteration=total_iteration,
+                )
+                Logger.current_logger().report_scalar(
+                    title="train",
+                    series="lr",
+                    value=lr,
                     iteration=total_iteration,
                 )
             if batch_i % 10 == 0:
@@ -180,6 +223,7 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
             eval_loss = eval_step(
                 state,
                 x0_batch=val_x,
+                noise_schedule=noise_schedule,
                 config=config,
                 rng=batch_rng,
             )
@@ -188,24 +232,29 @@ def train_and_evaluate(config: dict[str, Any], track: bool = False):
         if track:
             Logger.current_logger().report_scalar(
                 title="validation",
-                series="mse_loss",
+                series="loss",
                 value=float(np.mean(validation_loss)),
                 iteration=epoch,
             )
+    return state
+
+
+def save_model_checkpoint(save_path: str, state: TrainState, config: dict[str, Any]):
     checkpoint = {"model": state, "config": config}
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
     save_args = orbax_utils.save_args_from_target(checkpoint)
-    orbax_checkpointer.save(
-        str(Path.cwd()) + "/models/glyptic-dev", checkpoint, save_args=save_args, force=True
-    )
+    orbax_checkpointer.save(save_path, checkpoint, save_args=save_args, force=True)
 
 
 def main():
-    today = datetime.today().strftime("%Y%m%d-%H%M%S")
-    task: Task = Task.init(project_name="glyptic", task_name="experiment_" + today)
+    now = datetime.today().strftime("%Y%m%d-%H%M%S")
+    task: Task = Task.init(project_name="glyptic", task_name="experiment_" + now)
     config = get_config()
     task.connect(config)
-    train_and_evaluate(config, track=True)
+    state = train_and_evaluate(config, track=True)
+    save_model_checkpoint(
+        save_path=(str(Path.cwd()) + "/models/glyptic-dev" + now), state=state, config=config
+    )
 
 
 if __name__ == "__main__":

@@ -5,7 +5,35 @@ import jax
 import jax.numpy as jnp
 
 
-def create_noise_schedule(num_steps: int) -> FrozenDict:
+def create_noise_schedule(method: str, num_steps: int) -> FrozenDict:
+    if method == "cosine":
+        return create_cosine_noise_schedule(num_steps=num_steps)
+    elif method == "linear":
+        return create_linear_noise_schedule(num_steps=num_steps)
+    else:
+        raise RuntimeError(f"{method} is not a valid option for a noise schedule")
+
+
+# TODO: Review if correct
+def create_cosine_noise_schedule(num_steps: int, s=0.008) -> FrozenDict:
+    steps = num_steps + 1
+    t = jnp.linspace(0, num_steps, steps)
+    T = num_steps
+    alpha_bar = jnp.cos(((t / T) + s) / (1 + s) * jnp.pi * 0.5) ** 2
+    alpha_bar = alpha_bar / alpha_bar[0]
+    beta = 1 - (alpha_bar[1:] / alpha_bar[:-1])
+    beta = jnp.clip(beta, 0.0001, 0.999)
+    # beta = jnp.clip(beta, 0.0001, 0.9999)
+    # sigma2 = ((1 - alpha_bar[:-1]) / (1 - alpha_bar[1:])) * beta
+    sigma2 = beta
+    alpha = 1 - beta
+    alpha_bar = jnp.cumprod(alpha, axis=0)
+    return freeze(
+        {"alpha": alpha, "alpha_bar": alpha_bar, "sigma2": sigma2, "num_steps": num_steps}
+    )
+
+
+def create_linear_noise_schedule(num_steps: int) -> FrozenDict:
     beta = jnp.linspace(0.0001, 0.02, num_steps)
     alpha = 1 - beta
     alpha_bar = jnp.cumprod(alpha, axis=0)
@@ -39,8 +67,9 @@ def p_sample(
 ) -> jax.Array:
     alpha_bar = noise_schedule["alpha_bar"][times].reshape(-1, 1, 1, 1)
     alpha = noise_schedule["alpha"][times].reshape(-1, 1, 1, 1)
-    epsilon_coef = (1 - alpha) / (1 - alpha_bar) ** 0.5
-    mean = 1 / (alpha**0.5) * (xt - epsilon_coef - epsilon_theta)
-    variance = noise_schedule["sigma2"][times].reshape(-1, 1, 1, 1)
+    epsilon_coef = (1 - alpha) / ((1 - alpha_bar) ** 0.5)
+    # TODO: MISTAKE: used to be (xt - epsilon_coef - epsilon_theta)
+    mean = (1 / (alpha**0.5)) * (xt - epsilon_coef * epsilon_theta)
+    variance = noise_schedule["sigma2"][times].reshape(-1, 1, 1, 1) ** 0.5
     epsilon = jax.random.normal(rng, shape=xt.shape)
-    return mean + (variance**0.5) * epsilon
+    return mean + variance * epsilon
